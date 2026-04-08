@@ -65,7 +65,8 @@ def consumo_por_vehiculo() -> pd.DataFrame:
     sql = """
         SELECT
             v.nombre                          AS vehiculo,
-            COALESCE(v.placa, 'SIN-PLACA')    AS placa,  # ← CAMBIO: Reemplaza NULL
+            v.vehiculo_id                     AS vehiculo_id,
+            COALESCE(v.placa, 'SIN-PLACA')    AS placa,
             v.marca,
             tc.nombre                         AS tipo_combustible,
             SUM(b.cantidad)                   AS litros_consumidos,
@@ -81,47 +82,116 @@ def consumo_por_vehiculo() -> pd.DataFrame:
     """
     df = query_to_df(sql)
     
-    # Limpieza adicional por si hay strings "nan"
+    # Limpieza adicional y creación de identificador alternativo
     if not df.empty:
-        df["placa"] = df["placa"].replace(["nan", "NaN", ""], "SIN-PLACA")
+        # Reemplazar valores nulos o vacíos
+        df["placa"] = df["placa"].replace(["nan", "NaN", "", None], "SIN-PLACA")
+        
+        # Crear columna de identificación para gráficos
+        # Si tiene placa, usa placa. Si no, usa nombre del vehículo
+        df["identificador"] = df.apply(
+            lambda r: r["placa"] if r["placa"] != "SIN-PLACA" 
+            else f"{str(r['vehiculo'])[:12]}... (ID:{r['vehiculo_id']})",
+            axis=1
+        )
+        
+        # Crear etiqueta completa para gráficos
+        df["etiqueta_grafico"] = df.apply(
+            lambda r: f"{r['identificador']}\n{r['tipo_combustible'][:3]}",
+            axis=1
+        )
     
     return df
 
 #  2B. EFICIENCIA POR VEHÍCULO (km/litro)
 
+# logica_negocio.py
+
+from database import query_to_df
+import pandas as pd
+
+
 def eficiencia_vehiculos() -> pd.DataFrame:
     """
-    Calcula eficiencia (km/litro) por vehículo.
-    Usa km_inicial como odómetro: compara máximo - mínimo por vehículo.
-    
-    NOTA: Si tu tabla boletas tiene campo 'km_final', se puede mejorar
-    para calcular km_recorridos por boleta individual.
+    Como pocos registros tienen km_inicial/km_final, calcula en cambio
+    el COSTO PROMEDIO POR SOLICITUD por vehículo (igualmente útil para TD).
     """
     sql = """
         SELECT
-            v.placa,
-            v.nombre                                           AS vehiculo,
-            v.modelo,
-            COUNT(b.boleta_id)                                 AS nro_viajes,
-            ROUND(MIN(b.km_inicial), 0)                        AS odometro_inicial,
-            ROUND(MAX(b.km_inicial), 0)                        AS odometro_final,
-            ROUND(MAX(b.km_inicial) - MIN(b.km_inicial), 0)    AS km_totales,
-            ROUND(SUM(b.cantidad), 2)                          AS litros_totales,
-            CASE
-                WHEN SUM(b.cantidad) > 0 
-                THEN ROUND((MAX(b.km_inicial) - MIN(b.km_inicial)) / SUM(b.cantidad), 2)
-                ELSE 0
-            END                                                 AS km_por_litro,
-            ROUND(AVG(b.cantidad), 2)                          AS promedio_litros_viaje
-        FROM vehiculos v
-        JOIN boletas b ON v.vehiculo_id = b.vehiculo_id
+            v.nombre                                AS vehiculo,
+            COALESCE(v.placa, 'SIN-PLACA')          AS placa,
+            tc.nombre                               AS tipo_combustible,
+            COUNT(b.boleta_id)                      AS nro_solicitudes,
+            ROUND(AVG(b.cantidad), 1)               AS litros_promedio,
+            ROUND(MAX(b.cantidad), 1)               AS litros_maximo,
+            ROUND(MIN(b.cantidad), 1)               AS litros_minimo,
+            ROUND(AVG(b.total), 1)                  AS costo_promedio_bs,
+            ROUND(SUM(b.cantidad), 1)               AS litros_totales
+        FROM boletas b
+        JOIN vehiculos        v  ON b.vehiculo_id        = v.vehiculo_id
+        JOIN tipo_combustibles tc ON b.tipo_combustible_id = tc.tipo_combustible_id
         WHERE b.estado = 'APROBADO'
-          AND b.km_inicial IS NOT NULL
-        GROUP BY v.vehiculo_id
-        HAVING COUNT(b.boleta_id) >= 2
-        ORDER BY km_por_litro DESC
+          AND v.cplaca = 1
+        GROUP BY v.vehiculo_id, tc.tipo_combustible_id
+        HAVING COUNT(b.boleta_id) >= 3
+        ORDER BY litros_promedio DESC
     """
     return query_to_df(sql)
+    
+    # Si no hay datos, retornar vacío
+    if df.empty:
+        return df
+    
+    # DEBUG: Ver qué valores tenemos antes de filtrar
+    print(f"    Total vehículos antes de filtro: {len(df)}")
+    print(f"    Rango km/L: {df['km_por_litro'].min()} - {df['km_por_litro'].max()}")
+    
+    # Filtro más estricto: valores realistas
+    df_filtrado = df[
+        (df['km_por_litro'] >= 2) &      # Mínimo: camión muy ineficiente
+        (df['km_por_litro'] <= 100)      # Máximo: moto muy eficiente (ampliado para debug)
+    ].copy()
+    
+    print(f"    Vehículos después de filtro 2-100 km/L: {len(df_filtrado)}")
+    
+    # Si aún hay valores altos, filtrar más
+    if df_filtrado['km_por_litro'].max() > 50:
+        print(f"    ⚠️ Aún hay valores altos, aplicando filtro adicional 2-50 km/L")
+        df_filtrado = df_filtrado[df_filtrado['km_por_litro'] <= 50].copy()
+    
+    # Segundo filtro por tipo de vehículo (más específico)
+    def filtro_por_tipo(row):
+        vehiculo = str(row['vehiculo']).upper()
+        kmpl = row['km_por_litro']
+        
+        # Motocicletas
+        if 'MOTO' in vehiculo or 'MOTOCICLETA' in vehiculo:
+            return 20 <= kmpl <= 60
+        
+        # Camiones
+        elif any(x in vehiculo for x in ['CAMION', 'CAMIÓN', 'JAC', 'VOLQUETE', 'TANQUE']):
+            return 2 <= kmpl <= 12
+        
+        # Vagonetas
+        elif 'VAGONETA' in vehiculo:
+            return 5 <= kmpl <= 15
+        
+        # Camionetas (default)
+        else:
+            return 6 <= kmpl <= 20
+    
+    # Aplicar filtro por tipo
+    mascara_tipo = df_filtrado.apply(filtro_por_tipo, axis=1)
+    df_final = df_filtrado[mascara_tipo].copy()
+    
+    print(f"    Vehículos después de filtro por tipo: {len(df_final)}")
+    
+    if len(df_final) < 5:
+        print(f"    ⚠️ Pocos vehículos pasaron el filtro. Mostrando top 10 sin filtro de tipo...")
+        # Fallback: mostrar los que pasaron el filtro básico
+        return df_filtrado.head(15)
+    
+    return df_final
 
 def consumo_mensual() -> pd.DataFrame:
     """Litros y costo total mes a mes."""

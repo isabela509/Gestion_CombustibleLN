@@ -133,7 +133,7 @@ def grafico_top_vehiculos():
     
     # Rotar etiquetas 45 grados
     ax.set_xticks(range(len(df)))
-    ax.set_xticklabels(df["etiqueta"], rotation=45, ha="right", fontsize=8)  # ← CAMBIO CLAVE
+    ax.set_xticklabels(df["etiqueta_grafico"], rotation=45, ha="right", fontsize=8)  # ← CAMBIO CLAVE
     
     ax.set_ylabel("Litros consumidos")
     ax.set_title("Top 10 Vehículos con Mayor Consumo de Combustible")
@@ -414,67 +414,102 @@ def grafico_excesos():
     print("[8] Alertas de exceso...")
     df = detectar_excesos()
     if df.empty:
-        print("    Sin boletas con consumo excesivo."); return
+        print("    Sin boletas con consumo excesivo.")
+        return
 
     # Calcular promedio para clasificar severidad
     promedio_general = df["litros"].mean()
     
+    # Limitar a top 15 más críticas para mejor legibilidad
+    df = df.head(15).reset_index(drop=True)
+    
+    fig, ax = plt.subplots(figsize=(16, 9))  # Más alto para etiquetas largas
+    
     # Función para asignar color según severidad
     def get_color_severidad(litros):
         if litros > promedio_general * 3:
-            return "#d32f2f"  # Rojo crítico: > 3x promedio
+            return "#c62828"  # Rojo crítico: > 3x promedio
         elif litros > promedio_general * 2.5:
-            return "#f57c00"  # Naranja oscuro: 2.5-3x
+            return "#ef6c00"  # Naranja oscuro: 2.5-3x
         else:
-            return "#fbc02d"  # Amarillo: 2-2.5x
+            return "#f9a825"  # Amarillo: 2-2.5x
 
     colores = [get_color_severidad(l) for l in df["litros"]]
     
-    fig, ax = plt.subplots(figsize=(14, 7))
-    bars = ax.bar(range(len(df)), df["litros"], color=colores, 
-                  edgecolor="black", linewidth=1.2, alpha=0.9)
+    # Crear barras horizontales (mejor para etiquetas largas)
+    y_pos = np.arange(len(df))
+    bars = ax.barh(y_pos, df["litros"], color=colores, 
+                   edgecolor="black", linewidth=1.2, alpha=0.9, height=0.7)
     
-    # Etiquetas con identificación y alerta
+    # Etiquetas Y: Placa + Área + Fecha
     etiquetas = []
     for _, r in df.iterrows():
+        # Limpiar placa
+        placa = str(r.get('placa', 'S/P')).replace('nan', 'S/P').replace('None', 'S/P')
+        area = str(r.get('area', 'Sin área'))[:20]
+        fecha = str(r.get('fecha', ''))[:7]  # YYYY-MM
+        
+        # Formato: [ALERTA] Placa | Área | Fecha
         if r["litros"] > promedio_general * 3:
-            etiqueta = f"⚠️ #{r['nro_solicitud']}\n{r['area'][:18]}"
+            etiqueta = f"[!] {placa} | {area} | {fecha}"
         else:
-            etiqueta = f"#{r['nro_solicitud']}\n{r['area'][:18]}"
+            etiqueta = f"{placa} | {area} | {fecha}"
         etiquetas.append(etiqueta)
     
-    ax.set_xticks(range(len(df)))
-    ax.set_xticklabels(etiquetas, fontsize=7, fontweight="bold")
-    ax.set_ylabel("Litros consumidos", fontsize=11, fontweight="bold")
-    ax.set_title("ALERTA: CONSUMO EXCESIVO",
-                 fontsize=14, fontweight="bold", color="#d32f2f", pad=20)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(etiquetas, fontsize=9, fontweight="bold")
+    ax.invert_yaxis()  # Mayor arriba
     
-    # Líneas de referencia de severidad
-    ax.axhline(promedio_general, color="gray", linestyle="--", 
-               linewidth=1.5, alpha=0.5, label=f"Promedio: {promedio_general:,.0f}L")
-    ax.axhline(promedio_general * 2, color="orange", linestyle="--", 
-               linewidth=1.5, alpha=0.6, label=f"Alerta (2x): {promedio_general*2:,.0f}L")
-    ax.axhline(promedio_general * 3, color="red", linestyle="--", 
-               linewidth=2, alpha=0.7, label=f"Crítico (3x): {promedio_general*3:,.0f}L")
+    ax.set_xlabel("Litros consumidos", fontsize=12, fontweight="bold")
+    ax.set_title("ALERTA: CONSUMO EXCESIVO DETECTADO\n" + 
+                 f"Top 15 boletas con mayor consumo (Promedio general: {promedio_general:,.0f}L)",
+                 fontsize=14, fontweight="bold", color="#c62828", pad=20)
     
-    # Valores en las barras
+    # Líneas verticales de referencia (para barras horizontales)
+    ax.axvline(promedio_general, color="#757575", linestyle="--", 
+               linewidth=1.5, alpha=0.6, label=f"Promedio: {promedio_general:,.0f}L")
+    ax.axvline(promedio_general * 2, color="#f57c00", linestyle="--", 
+               linewidth=2, alpha=0.6, label=f"Alerta (2x): {promedio_general*2:,.0f}L")
+    ax.axvline(promedio_general * 3, color="#c62828", linestyle="--", 
+               linewidth=2.5, alpha=0.7, label=f"Crítico (3x): {promedio_general*3:,.0f}L")
+    
+    # Valores al final de cada barra
     for i, (bar, val) in enumerate(zip(bars, df["litros"])):
-        altura = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2, altura + 5,
-                f"{val:,.0f}L\n({val/promedio_general:.1f}x)",
-                ha="center", va="bottom", fontsize=7, fontweight="bold")
+        ancho = bar.get_width()
+        multiplo = val / promedio_general
+        
+        # Texto: "X,XXX L (X.Xx)"
+        texto = f"{val:,.0f}L  ({multiplo:.1f}x)"
+        
+        # Color del texto según severidad
+        color_texto = "white" if multiplo > 2.5 else "black"
+        
+        ax.text(ancho + 50, bar.get_y() + bar.get_height()/2,
+                texto, ha="left", va="center", fontsize=9, 
+                fontweight="bold", color=color_texto,
+                bbox=dict(boxstyle="round,pad=0.3", 
+                         facecolor=colores[i], alpha=0.8, edgecolor="none"))
     
     # Leyenda mejorada
     from matplotlib.patches import Patch
-    ax.legend(handles=[
-        Patch(color="#d32f2f", label="CRÍTICO (> 3x promedio)", alpha=0.9),
-        Patch(color="#f57c00", label="ALERTA (2.5-3x promedio)", alpha=0.9),
-        Patch(color="#fbc02d", label="PRECAUCIÓN (> 2x promedio)", alpha=0.9),
-        plt.Line2D([0],[0], color="gray", linestyle="--", linewidth=1.5, label="Promedio general"),
-    ], loc="upper left", fontsize=9, title="Niveles de Severidad", title_fontsize=10)
+    leyenda = ax.legend(handles=[
+        Patch(color="#c62828", label=f"CRÍTICO (> 3x): >{promedio_general*3:,.0f}L", alpha=0.9),
+        Patch(color="#ef6c00", label=f"ALERTA (2.5-3x): {promedio_general*2.5:,.0f}L - {promedio_general*3:,.0f}L", alpha=0.9),
+        Patch(color="#f9a825", label=f"PRECAUCIÓN (2-2.5x): {promedio_general*2:,.0f}L - {promedio_general*2.5:,.0f}L", alpha=0.9),
+    ], loc="lower right", fontsize=10, title="Niveles de Severidad", 
+    title_fontsize=11, framealpha=0.95)
     
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x,_: f"{x:,.0f}"))
-    ax.grid(axis="y", alpha=0.3, linestyle=":")
+    # Agregar grid solo en X
+    ax.grid(axis="x", alpha=0.3, linestyle=":")
+    ax.set_axisbelow(True)
+    
+    # Ajustar límites para que quepan los textos
+    max_val = df["litros"].max()
+    ax.set_xlim(0, max_val * 1.3)
+    
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x,_: f"{x:,.0f}"))
+    
+    plt.tight_layout()
     guardar("08_alertas_exceso.png")
 
 
@@ -512,54 +547,72 @@ def grafico_comparativo_combustibles():
 
 #  GRÁFICO 10 — Eficiencia de vehículos (km/litro)
 def grafico_eficiencia_vehiculos():
-    print("[10] Eficiencia de vehículos...")
+    print("[10] Consumo promedio por vehículo...")
     df = eficiencia_vehiculos()
+
     if df.empty:
-        print("    Sin datos de kilometraje."); return
+        print("    Sin datos.")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, "Sin datos disponibles", ha='center', va='center', fontsize=14)
+        ax.set_title("Consumo promedio por vehículo")
+        guardar("10_eficiencia_vehiculos.png")
+        return
 
-    # Top 15 vehículos con peor rendimiento (menos km/litro)
-    df = df.sort_values("km_por_litro").head(15)
-
-    fig, ax = plt.subplots(figsize=(12, 7))
-    
-    # Código de colores: Rojo (< 5 km/L) = muy ineficiente,
-    #                     Naranja (5-8) = moderado,
-    #                     Verde (> 8) = eficiente
-    colores = ["#d32f2f" if km < 5 
-               else "#ff9800" if km < 8 
-               else "#4caf50"
-               for km in df["km_por_litro"]]
-    
-    bars = ax.barh(range(len(df)), df["km_por_litro"], color=colores, alpha=0.8)
-    ax.set_yticks(range(len(df)))
-    ax.set_yticklabels(
-        [f"{r['placa']}\n{r['vehiculo'][:20]}" 
-         for _, r in df.iterrows()],
-        fontsize=8
+    # Top 15 por litros promedio por solicitud
+    top = df.nlargest(15, "litros_promedio").copy()
+    top["placa"] = top["placa"].replace(["nan", "NaN", "", None], "SIN-PLACA")
+    top["etiqueta"] = top.apply(
+        lambda r: f"{r['placa']}\n{r['vehiculo'][:15]}", axis=1
     )
-    ax.set_xlabel("Kilómetros por Litro (km/L)")
-    ax.set_title("Eficiencia de Vehículos - Rendimiento de Combustible")
-    
-    # Línea de meta (8 km/litro es eficiencia aceptable)
-    ax.axvline(8, color="green", linestyle="--", linewidth=2, 
-               alpha=0.6, label="Meta: 8 km/L")
-    
-    # Etiquetas de valores
-    for bar, val in zip(bars, df["km_por_litro"]):
-        ax.text(val + 0.15, bar.get_y() + bar.get_height()/2,
-                f"{val:.1f}", va="center", fontsize=8, fontweight="bold")
-    
-    # Leyenda con interpretación de colores
+
+    fig, ax = plt.subplots(figsize=(15, 9))
+    y_pos = np.arange(len(top))
+
+    colores = ["#0D47A1" if "DIESEL" in str(t).upper() else "#1B5E20"
+               for t in top["tipo_combustible"]]
+
+    bars = ax.barh(y_pos, top["litros_promedio"], color=colores,
+                   edgecolor="black", linewidth=0.7, height=0.65)
+
+    # Valor + nro solicitudes al final de cada barra
+    for bar, (_, r) in zip(bars, top.iterrows()):
+        ax.text(
+            bar.get_width() + top["litros_promedio"].max() * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f"{r['litros_promedio']:,.0f} L  (máx: {r['litros_maximo']:,.0f}, {r['nro_solicitudes']} viajes)",
+            va="center", fontsize=8.5
+        )
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(top["etiqueta"], fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel("Litros promedio por solicitud", fontsize=11, fontweight="bold")
+    ax.set_title(
+        "Consumo Promedio por Vehículo y Solicitud\n"
+        "(solo vehículos con placa y mínimo 3 solicitudes aprobadas)",
+        fontsize=13, fontweight="bold", pad=15
+    )
+
+    # Línea de promedio general
+    prom = top["litros_promedio"].mean()
+    ax.axvline(prom, color="red", linestyle="--", linewidth=1.5,
+               label=f"Promedio general: {prom:,.0f} L")
+
     from matplotlib.patches import Patch
     ax.legend(handles=[
-        Patch(color="#d32f2f", label="Muy ineficiente (< 5 km/L)", alpha=0.8),
-        Patch(color="#ff9800", label="Moderado (5-8 km/L)", alpha=0.8),
-        Patch(color="#4caf50", label="Eficiente (> 8 km/L)", alpha=0.8),
-        plt.Line2D([0],[0], color="green", linestyle="--", linewidth=2, label="Meta"),
-    ])
-    guardar("10_eficiencia_vehiculos.png")
+        Patch(color="#0D47A1", label="Diésel"),
+        Patch(color="#1B5E20", label="Gasolina"),
+        plt.Line2D([0],[0], color="red", linestyle="--",
+                   label=f"Promedio: {prom:,.0f} L"),
+    ], fontsize=9, loc="lower right")
 
+    ax.grid(axis="x", alpha=0.3, linestyle=":")
+    ax.set_axisbelow(True)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x,_: f"{x:,.0f}"))
 
+    plt.tight_layout()
+    guardar("10_eficiencia_vehiculos.png") 
+    
 #  GRÁFICO 11 — Resumen ejecutivo (KPI cards visual)
 def grafico_resumen_ejecutivo():
     print("[11] Resumen ejecutivo...")
