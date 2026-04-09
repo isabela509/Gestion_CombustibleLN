@@ -113,7 +113,7 @@ def grafico_top_vehiculos():
 
     # Reemplazar NULL en placas
     df["placa"] = df["placa"].fillna("SIN-PLACA")
-    df["placa"] = df["placa"].replace("nan", "SIN-PLACA")
+    df["placa"] = df["placa"].replace(["nan", "NaN", "", None], "SIN-PLACA")
     
     # Etiqueta corta: Placa + nombre corto
     df["etiqueta"] = df.apply(
@@ -133,7 +133,7 @@ def grafico_top_vehiculos():
     
     # Rotar etiquetas 45 grados
     ax.set_xticks(range(len(df)))
-    ax.set_xticklabels(df["etiqueta_grafico"], rotation=45, ha="right", fontsize=8)  # ← CAMBIO CLAVE
+    ax.set_xticklabels(df["etiqueta"], rotation=45, ha="right", fontsize=8)  # ← CAMBIO CLAVE
     
     ax.set_ylabel("Litros consumidos")
     ax.set_title("Top 10 Vehículos con Mayor Consumo de Combustible")
@@ -274,10 +274,11 @@ def grafico_stock_actual():
 #  GRÁFICO 6 — Costos mensuales acumulados
 def grafico_costos_mensuales():
     print("[6] Costos mensuales...")
-    df = consumo_mensual()
+    df = consumo_mensual()  # Reutilizamos esta función para obtener datos mensuales
     if df.empty:
         print("    Sin datos."); return
-
+        
+        
     pivot = df.pivot_table(
         index="mes", columns="tipo_combustible",
         values="costo_total_bs", aggfunc="sum"
@@ -381,6 +382,8 @@ def grafico_tendencia_predictiva():
             ax.text(0.02, 0.95, "⚠️ Pocos datos\n(regresión simple)", 
                    transform=ax.transAxes, fontsize=9, verticalalignment="top", fontweight="bold",
                    bbox=dict(boxstyle="round", facecolor="yellow", alpha=0.4, edgecolor="orange"))
+            
+            meses_pred = []
 
         # Mostrar solo cada 3 meses en las etiquetas para evitar sobreposición
         all_months = list(df["mes"]) + (meses_pred if len(df) >= 6 else 
@@ -418,7 +421,8 @@ def grafico_excesos():
         return
 
     # Calcular promedio para clasificar severidad
-    promedio_general = df["litros"].mean()
+    df["litros"] = pd.to_numeric(df["litros"], errors="coerce")
+    promedio_general = df["litros"].dropna().mean()
     
     # Limitar a top 15 más críticas para mejor legibilidad
     df = df.head(15).reset_index(drop=True)

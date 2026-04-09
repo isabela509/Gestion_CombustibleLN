@@ -8,10 +8,10 @@ Docs:     http://localhost:8000/docs
 CORS:     Configurar según ambiente (ver ALLOWED_ORIGINS)
 """
 
+import os
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-import os
 
 # ══════════════════════════════════════════════════════
 #  CONFIGURACIÓN POR AMBIENTE
@@ -32,6 +32,7 @@ else:
 
 print(f"[API] Ambiente: {ENVIRONMENT.upper()} | CORS: {ALLOWED_ORIGINS}")
 
+# Importar módulos de lógica descriptiva y gráficos
 from logica_negocio import (
     consumo_por_area,
     consumo_por_vehiculo,
@@ -51,15 +52,20 @@ from logica_negocio import (
 )
 import graficos as g
 
+# Importar router predictivo (ya generado)
+from api_predictiva import router_predictivo
+
 # Whitelist de valores válidos (defensa contra inyección)
 TIPOS_COMBUSTIBLES = {"TODOS", "GASOLINA", "DIESEL"}
 
+# Crear instancia FastAPI
 app = FastAPI(
     title="API de Control de Combustible",
     description="Sistema de reportes y análisis — Municipio de Caranavi",
     version="1.0.0",
 )
 
+# Configuración CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -68,11 +74,14 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
+# Incluir router predictivo
+app.include_router(router_predictivo)
+
+
 def df_json(df):
     if df.empty:
         return []
     return df.fillna("").to_dict(orient="records")
-
 
 
 #  endpoints de datos 
@@ -98,14 +107,15 @@ def root():
             "Eficiencia": ["/eficiencia/vehiculos"],
             "Predicción": ["/tendencia?tipo=DIESEL|GASOLINA"],
             "Validación": [
-                "/validar-stock?apertura_id=1&tipo_combustible_id=1&cantidad_solicitada=50"
+                "/validar-stock?apertura_id=1&amp;tipo_combustible_id=1&amp;cantidad_solicitada=50"
             ],
             "Ingresos": ["/ingresos"],
             "Costos": ["/costos/mes-area"],
             "Gráficos": [
                 "/graficos/{nombre}",
                 "/graficos/generar-todos",
-            ]
+            ],
+            "Predictiva": ["/predictiva/* (varios endpoints para inteligencia predictiva)"]
         }
     }
 
@@ -160,7 +170,6 @@ def get_consumo_conductor():
 def get_stock():
     """Stock actual de combustible por área."""
     return df_json(stock_actual())
-
 
 
 
@@ -249,7 +258,7 @@ def get_grafico(nombre: str):
 
 @app.get("/excesos", tags=["Alertas"])
 def get_excesos():
-    """Boletas con consumo excesivamente alto (>2x promedio)."""
+    """Boletas con consumo excesivamente alto (&gt;2x promedio)."""
     return df_json(detectar_excesos())
 
 
@@ -281,7 +290,7 @@ def validar_stock(
     Valida si hay stock disponible ANTES de aprobar una solicitud.
     
     Ejemplo:
-    POST /validar-stock?apertura_id=5&tipo_combustible_id=2&cantidad_solicitada=50
+    POST /validar-stock?apertura_id=5&amp;tipo_combustible_id=2&amp;cantidad_solicitada=50
     
     Respuesta:
     {
@@ -322,3 +331,4 @@ def generar_todos_los_graficos():
         "total": len(generados),
         "mensaje": "✅ Todos los gráficos generados correctamente" if not errores else f"⚠️ {len(errores)} error(es)"
     }
+    

@@ -1,6 +1,5 @@
 """
 VALIDACIÓN DE DATOS - Sistema de Combustible
-Genera tabla resumen de todas las funciones antes de crear gráficos
 """
 
 import pandas as pd

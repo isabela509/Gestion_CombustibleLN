@@ -27,7 +27,10 @@ def query_to_df(sql: str, params=None) -> pd.DataFrame:
     conn = None
     try:
         conn = get_connection()
+        
         df = pd.read_sql(sql, conn, params=params)
+        
+        
         return df
     except mysql.connector.Error as e:
         print(f"❌ Error de base de datos: {e}")

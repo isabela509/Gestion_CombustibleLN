@@ -1,5 +1,5 @@
 """
-LÓGICA DE NEGOCIO - SISTEMA DE COMBUSTIBLE
+LÓGICA DE NEGOCIO DESCRIPTIVA - SISTEMA DE COMBUSTIBLE 
 Municipio de Caranavi
 
 Contiene todas las consultas y cálculos de negocio:
@@ -105,12 +105,6 @@ def consumo_por_vehiculo() -> pd.DataFrame:
 
 #  2B. EFICIENCIA POR VEHÍCULO (km/litro)
 
-# logica_negocio.py
-
-from database import query_to_df
-import pandas as pd
-
-
 def eficiencia_vehiculos() -> pd.DataFrame:
     """
     Como pocos registros tienen km_inicial/km_final, calcula en cambio
@@ -138,61 +132,7 @@ def eficiencia_vehiculos() -> pd.DataFrame:
     """
     return query_to_df(sql)
     
-    # Si no hay datos, retornar vacío
-    if df.empty:
-        return df
     
-    # DEBUG: Ver qué valores tenemos antes de filtrar
-    print(f"    Total vehículos antes de filtro: {len(df)}")
-    print(f"    Rango km/L: {df['km_por_litro'].min()} - {df['km_por_litro'].max()}")
-    
-    # Filtro más estricto: valores realistas
-    df_filtrado = df[
-        (df['km_por_litro'] >= 2) &      # Mínimo: camión muy ineficiente
-        (df['km_por_litro'] <= 100)      # Máximo: moto muy eficiente (ampliado para debug)
-    ].copy()
-    
-    print(f"    Vehículos después de filtro 2-100 km/L: {len(df_filtrado)}")
-    
-    # Si aún hay valores altos, filtrar más
-    if df_filtrado['km_por_litro'].max() > 50:
-        print(f"    ⚠️ Aún hay valores altos, aplicando filtro adicional 2-50 km/L")
-        df_filtrado = df_filtrado[df_filtrado['km_por_litro'] <= 50].copy()
-    
-    # Segundo filtro por tipo de vehículo (más específico)
-    def filtro_por_tipo(row):
-        vehiculo = str(row['vehiculo']).upper()
-        kmpl = row['km_por_litro']
-        
-        # Motocicletas
-        if 'MOTO' in vehiculo or 'MOTOCICLETA' in vehiculo:
-            return 20 <= kmpl <= 60
-        
-        # Camiones
-        elif any(x in vehiculo for x in ['CAMION', 'CAMIÓN', 'JAC', 'VOLQUETE', 'TANQUE']):
-            return 2 <= kmpl <= 12
-        
-        # Vagonetas
-        elif 'VAGONETA' in vehiculo:
-            return 5 <= kmpl <= 15
-        
-        # Camionetas (default)
-        else:
-            return 6 <= kmpl <= 20
-    
-    # Aplicar filtro por tipo
-    mascara_tipo = df_filtrado.apply(filtro_por_tipo, axis=1)
-    df_final = df_filtrado[mascara_tipo].copy()
-    
-    print(f"    Vehículos después de filtro por tipo: {len(df_final)}")
-    
-    if len(df_final) < 5:
-        print(f"    ⚠️ Pocos vehículos pasaron el filtro. Mostrando top 10 sin filtro de tipo...")
-        # Fallback: mostrar los que pasaron el filtro básico
-        return df_filtrado.head(15)
-    
-    return df_final
-
 def consumo_mensual() -> pd.DataFrame:
     """Litros y costo total mes a mes."""
     sql = """
