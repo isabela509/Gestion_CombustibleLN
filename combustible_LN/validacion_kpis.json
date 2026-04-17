@@ -1,0 +1,17 @@
+{
+  "fecha": "2026-04-16",
+  "resultados": {
+    "KPI 1": true,
+    "KPI 2": true,
+    "KPI 3": true,
+    "KPI 4": true,
+    "KPI 5": true,
+    "KPI 6": true,
+    "KPI 7": true,
+    "KPI 8": true,
+    "KPI 9": true
+  },
+  "total_exitosos": 9,
+  "total": 9,
+  "porcentaje": 100.0
+}

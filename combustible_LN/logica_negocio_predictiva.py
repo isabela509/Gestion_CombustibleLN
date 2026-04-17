@@ -2,9 +2,6 @@
 LÓGICA DE NEGOCIO PREDICTIVA V2 — SISTEMA DE COMBUSTIBLE
 Municipio de Caranavi
 
-Versión simplificada y accionable para toma de decisiones.
-Elimina: mapas de calor, radar, semáforo corrupto, proyecciones técnicas inútiles.
-Agrega: estimación de costos con precios, tablas de decisión prácticas.
 """
 
 from database import query_to_df
@@ -25,11 +22,14 @@ PRECIOS_COMBUSTIBLE = {
 }
 
 # Proyección de precios (ejemplo: inflación anual 3%)
-INFLACION_ANUAL = 0.03
+#nos permite responder: ¿si hay inflación, cuánto cuesta/costara?
+#Decision BI: ¿Y si sube 5%? 
+#CAMBIAS A 0.05, ves como impacta el presupuesto 
+INFLACION_ANUAL = 0.03 #herramienta de decision
 
 DIAS_LABORALES_MES = 22
 MESES_PROYECCION = 12
-
+#asunciones definidad para construir modelo a futuro 
 
 # ══════════════════════════════════════════════════════════════════════
 #  FUNCIONES BASE (corregidas y simplificadas)
@@ -101,6 +101,14 @@ def _siguiente_meses(desde_mes_str: str, n: int) -> list:
 #  P1. PLAN DE COMPRAS MENSUAL (reemplaza proyección lineal inútil)
 # ══════════════════════════════════════════════════════════════════════
 
+#BI predictiva: "¿Cuánto comprar el próximo mes para no quedarnos sin stock ni comprar de más?"
+#decision de negocio: Jefe: "¿Cuánto debo solicitar a YPFB para el próximo mes?"
+#sistema: "5,850 litros DIESEL, Bs 21,762"
+#jefe: "¿Y si hay consumo pico?"
+#sistema: "Planifica para 6,550L (rango de riesgo)"
+#jefe: "¿Qué pasa si corto un 10%?"
+#sistema: "Te faltará en 16% de los meses" ← DECISIÓN INFORMADA
+
 def plan_compras_mensual(tipo_combustible: str = "DIESEL") -> dict:
     """
     Plan práctico de compras basado en estadísticas reales, no en modelos falsos.
@@ -158,6 +166,12 @@ def plan_compras_mensual(tipo_combustible: str = "DIESEL") -> dict:
 #  P2. PRESUPUESTO ANUAL CON ESCENARIOS (mejorado)
 # ══════════════════════════════════════════════════════════════════════
 
+#Responde: ¿Si todo va mal, cuanto sera/es?)
+#Decision BI:  - Jefe solicita a gobernación: "Necesitamos Bs 291,000"
+      #Si le dan menos (250,000) → Scenario Optimista 
+      #Si le dan exacto (291,000) → Scenario Base + 5% seguridad
+      #Si le dan más (330,000) → Pueden cubrir peor caso (improbable)
+      
 def presupuesto_anual_escenarios(anio_proyeccion: int = None) -> dict:
     """
     Presupuesto anual con 3 escenarios realistas.
@@ -177,7 +191,7 @@ def presupuesto_anual_escenarios(anio_proyeccion: int = None) -> dict:
         precio = PRECIOS_COMBUSTIBLE.get(tipo, 3.72)
         
         # Escenarios mensuales
-        mensual_optimista = plan["promedio_historico"] * 0.85  # -15% eficiencia
+        mensual_optimista = plan["promedio_historico"] * 0.85  # -15% eficiencia (decision de negocio realista basado en lo historico)
         mensual_base = plan["recomendacion_compra"]  # Recomendación normal
         mensual_pesimista = plan["maximo_historico"]  # Peor mes histórico
         
@@ -225,6 +239,7 @@ def presupuesto_anual_escenarios(anio_proyeccion: int = None) -> dict:
 def distribucion_stock_decision(litros_disponibles: float, tipo_combustible: str = "DIESEL") -> dict:
     """
     Distribución práctica de stock con mensaje claro de decisión.
+    Responde: ¿Cuantos DIAS de cobertura dan estos litros a cada area?
     """
     sql = """
         SELECT
@@ -252,14 +267,21 @@ def distribucion_stock_decision(litros_disponibles: float, tipo_combustible: str
     df["litros_asignados"] = (df["porcentaje_necesidad"] / 100 * litros_disponibles).round(0)
     df["dias_cobertura"] = (df["litros_asignados"] / (df["consumo_mensual_promedio"] / DIAS_LABORALES_MES)).round(0)
     
+    #¿Porque BI? 
+    #Responde pregunta de jefe: "¿Cuánto tarda en acabarse?"
+       #Permite decisión: "¿4,000L son suficientes? ¿O necesita reabastecimiento?"
+    
+    
+    
     # Determinar prioridad
+    #Automatizacion inteligente
     def prioridad(row):
         if row["dias_cobertura"] < 7:
-            return "🔴 CRÍTICO - Requiere reabastecimiento inmediato"
+            return " CRÍTICO - Requiere reabastecimiento inmediato"
         elif row["dias_cobertura"] < 15:
-            return "🟡 ALERTA - Programar compra"
+            return " ALERTA - Programar compra"
         else:
-            return "🟢 OK - Stock suficiente"
+            return " OK - Stock suficiente"
     
     df["prioridad"] = df.apply(prioridad, axis=1)
     
@@ -410,6 +432,7 @@ def simulador_ahorro_escenarios(porcentajes_reduccion: list = [5, 10, 15, 20], m
 #  P6. CALENDARIO DE COMPRAS CON PROYECCIÓN DE PRECIOS (nuevo)
 # ══════════════════════════════════════════════════════════════════════
 
+#Responde: "¿Cuándo y a qué precio debo comprar en los próximos 6 meses?"
 def calendario_compras_con_precios(meses: int = 6, inflacion_mensual: float = None) -> dict:
     """
     Calendario de compras que incluye proyección de precios.
@@ -512,10 +535,16 @@ def calendario_compras_con_precios(meses: int = 6, inflacion_mensual: float = No
 #  P7. ESTIMACIÓN DE COSTOS FUTUROS CON PRECIOS (nuevo - solicitado)
 # ══════════════════════════════════════════════════════════════════════
 
+#Para DECISION BI:
+#- Si presupuesto es fijo: Bs 270,000
+     #→ No alcanza en escenario moderado (necesita 277,000)
+    #Si presupuesto es flexible: Bs 280,000
+    #→ Alcanza moderado pero falta en pesimista (300,000)
+    #DECISIÓN: Negociar funds para pesimista o reducir consumo
 def estimacion_costos_futuros(horizonte_meses: int = 12, escenario_precio: str = "moderado") -> dict:
     """
     Proyección de inversión en combustible combinando volumen y precios.
-    
+    Responde : "¿Cual es el rango de costos posibles?"
     Escenarios de precio:
     - conservador: precios actuales sin cambio
     - moderado: inflación 3% anual

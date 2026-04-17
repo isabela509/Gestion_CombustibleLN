@@ -52,8 +52,24 @@ from logica_negocio import (
 )
 import graficos as g
 
+from kpis_anomalias import (
+    kpi_consumo_por_vehiculo,
+    kpi_consumo_por_area,
+    kpi_rendimiento_km_litro,
+    kpi_desviacion_consumo,
+    deteccion_anomalias_diagnostico,
+    kpi_estacionalidad_fin_semana,
+    kpi_ranking_eficiencia_areas,
+    prediccion_consumo_proximo_mes,
+    dashboard_kpis_completo
+)
+
+
 # Importar router predictivo (ya generado)
 from api_predictiva import router_predictivo
+
+# Importar router de KPIs
+from api_kpis import router_kpis
 
 # Whitelist de valores válidos (defensa contra inyección)
 TIPOS_COMBUSTIBLES = {"TODOS", "GASOLINA", "DIESEL"}
@@ -76,6 +92,9 @@ app.add_middleware(
 
 # Incluir router predictivo
 app.include_router(router_predictivo)
+
+# Incluir router de KPIs
+app.include_router(router_kpis, prefix="/api", tags=["KPIs Reales"])
 
 
 def df_json(df):
@@ -329,6 +348,88 @@ def generar_todos_los_graficos():
         "generados": generados,
         "errores": errores,
         "total": len(generados),
-        "mensaje": "✅ Todos los gráficos generados correctamente" if not errores else f"⚠️ {len(errores)} error(es)"
+        "mensaje": "Todos los gráficos generados correctamente" if not errores else f"{len(errores)} error(es)"
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINTS PARA GRÁFICOS DE KPIs
+# ═══════════════════════════════════════════════════════════════════
+
+GRAFICOS_KPIS_DISPONIBLES = {
+    "kpi-01-consumo-vehiculo": ("graficos/kpi_01_consumo_vehiculo.png", "KPI 1: Consumo por vehículo"),
+    "kpi-02-consumo-area": ("graficos/kpi_02_consumo_area_pareto.png", "KPI 2: Consumo por área (Pareto)"),
+    "kpi-03-rendimiento": ("graficos/kpi_03_rendimiento_km_litro.png", "KPI 3: Rendimiento"),
+    "kpi-04-desviacion": ("graficos/kpi_04_desviacion_zscore.png", "KPI 4: Desviación Z-Score"),
+    "kpi-05-anomalias": ("graficos/kpi_05_anomalias_diagnostico.png", "KPI 5: Anomalías"),
+    "kpi-06-estacionalidad": ("graficos/kpi_06_estacionalidad_fin_semana.png", "KPI 6: Estacionalidad"),
+    "kpi-07-ranking": ("graficos/kpi_07_ranking_eficiencia_areas.png", "KPI 7: Ranking eficiencia"),
+    "kpi-08-prediccion": ("graficos/kpi_08_prediccion_proximo_mes.png", "KPI 8: Predicción próximo mes"),
+}
+
+@app.get("/graficos-kpis", tags=["Gráficos KPIs"])
+def listar_graficos_kpis():
+    """Lista todos los gráficos de KPIs disponibles"""
+    return {
+        "graficos_disponibles": [
+            {
+                "id": nombre,
+                "descripcion": desc,
+                "url": f"/graficos-kpis/{nombre}",
+                "disponible": os.path.exists(path)
+            }
+            for nombre, (path, desc) in GRAFICOS_KPIS_DISPONIBLES.items()
+        ],
+        "total": len(GRAFICOS_KPIS_DISPONIBLES)
+    }
+
+@app.get("/graficos-kpis/{nombre_grafico}", tags=["Gráficos KPIs"])
+def obtener_grafico_kpi(nombre_grafico: str):
+    """
+    Retorna un gráfico de KPI en PNG
+    
+    Opciones:
+    - kpi-01-consumo-vehiculo
+    - kpi-02-consumo-area
+    - kpi-03-rendimiento
+    - kpi-04-desviacion
+    - kpi-05-anomalias
+    - kpi-06-estacionalidad
+    - kpi-07-ranking
+    - kpi-08-prediccion
+    """
+    if nombre_grafico not in GRAFICOS_KPIS_DISPONIBLES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Gráfico '{nombre_grafico}' no encontrado"
+        )
+    
+    path, descripcion = GRAFICOS_KPIS_DISPONIBLES[nombre_grafico]
+    
+    if not os.path.exists(path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Gráfico no generado. Ejecutar /generar-graficos-kpis primero"
+        )
+    
+    return FileResponse(path, media_type="image/png")
+
+@app.post("/generar-graficos-kpis", tags=["Gráficos KPIs"])
+def generar_graficos_kpis():
+    """Genera (o regenera) todos los gráficos de KPIs"""
+    try:
+        from graficos_kpis import generar_todos_graficos_kpis
+        generar_todos_graficos_kpis()
+        
+        return {
+            "estado": "completado",
+            "mensaje": "Gráficos de KPIs generados exitosamente",
+            "ubicacion": "graficos/",
+            "graficos": list(GRAFICOS_KPIS_DISPONIBLES.keys())
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generando gráficos: {str(e)}"
+        )
     

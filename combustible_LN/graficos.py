@@ -1,9 +1,6 @@
 """
 GENERACIÓN DE GRÁFICOS - REPORTES TD
 Sistema de Control de Combustible - Municipio de Caranavi
-
-Genera y guarda todos los gráficos en la carpeta /graficos/
-Ejecuta: python graficos.py
 """
 
 import matplotlib
@@ -13,7 +10,12 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from scipy import stats  # Para regresión estadística avanzada
+
+# Lazy import de scipy para evitar problemas de dependencias
+try:
+    from scipy import stats
+except ImportError:
+    stats = None
 
 from logica_negocio import (
     consumo_por_area,
